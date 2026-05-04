@@ -15,7 +15,7 @@
 # The DB connection is read from .env (copy from .env.example on first setup).
 include .env
 # Goose uses its own DSN format for postgres. We build it once here.
-DB_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/aceshigh?sslmode=disable
+GOOSE_DB_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/aceshigh?sslmode=disable
 
 
 up: ## Start postgres in the background and wait until healthy
@@ -31,11 +31,25 @@ down: ## Stop postgres (data preserved in the named volume)
 
 
 migrate-up: ## Apply all pending migrations
-	goose -dir migrations postgres "$(DB_URL)" up
+	goose -dir migrations postgres "$(GOOSE_DB_URL)" up
  
 migrate-down: ## Roll back the most recent migration
-	goose -dir migrations postgres "$(DB_URL)" down
+	goose -dir migrations postgres "$(GOOSE_DB_URL)" down
 
 psql: ## Open a psql shell against the running database
 	docker compose exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
+.PHONY: extract-events
+extract-events: ## Export events from MDB to data/events.csv (override MDB=path/to/avall.mdb)
+	@mkdir -p data
+	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) events > data/events.csv
+	@echo "Wrote data/events.csv"
+ 
+.PHONY: build-loader
+build-loader: ## Compile the loader binary
+	@mkdir -p bin
+	go build -o bin/loader ./cmd/loader
+ 
+.PHONY: load-events
+load-events: build-loader ## Run the loader against data/events.csv
+	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --source data/events.csv
