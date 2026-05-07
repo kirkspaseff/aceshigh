@@ -4,15 +4,21 @@ import (
 	stdcsv "encoding/csv"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Reader wraps the standard csv.Reader to provide name-based field access.
 // mdb-export output has header row + many data rows; we want to address
 // fields by column name rather than positional index because (a) it's
 // readable and (b) column ordering can shift between exports.
+//
+// Column lookups are case-insensitive: the underlying MDB table case
+// varies (events.csv has "ev_id", aircraft.csv has "Aircraft_Key" with
+// title case, etc.) and forcing callers to remember which is which is
+// a recipe for off-by-one debug sessions.
 type Reader struct {
 	r       *stdcsv.Reader
-	headers map[string]int
+	headers map[string]int // keyed by lowercased column name
 	row     []string
 }
 
@@ -34,7 +40,7 @@ func NewReader(r io.Reader) (*Reader, error) {
 	}
 	headers := make(map[string]int, len(header))
 	for i, name := range header {
-		headers[name] = i
+		headers[strings.ToLower(name)] = i
 	}
 	return &Reader{r: c, headers: headers}, nil
 }
@@ -51,10 +57,11 @@ func (r *Reader) Read() error {
 }
 
 // Get returns the value of column `name` in the current row.
-// Returns "" if the column doesn't exist or the row has fewer fields
-// than the header — both treated as missing-data, not errors.
+// Lookup is case-insensitive. Returns "" if the column doesn't exist
+// or the row has fewer fields than the header — both treated as
+// missing-data, not errors.
 func (r *Reader) Get(name string) string {
-	idx, ok := r.headers[name]
+	idx, ok := r.headers[strings.ToLower(name)]
 	if !ok {
 		return ""
 	}
@@ -64,8 +71,8 @@ func (r *Reader) Get(name string) string {
 	return r.row[idx]
 }
 
-// Row returns a map of the current row's fields, keyed by column name.
-// Useful for building the raw JSONB blob.
+// Row returns a map of the current row's fields, keyed by lowercased
+// column name. Useful for building the raw JSONB blob.
 func (r *Reader) Row() map[string]string {
 	out := make(map[string]string, len(r.headers))
 	for name, idx := range r.headers {
@@ -76,7 +83,7 @@ func (r *Reader) Row() map[string]string {
 	return out
 }
 
-// Headers returns the column names in the order they appeared.
+// Headers returns the lowercased column names in the order they appeared.
 // (Unused for now; useful later for diagnostics.)
 func (r *Reader) Headers() []string {
 	out := make([]string, len(r.headers))
@@ -85,3 +92,4 @@ func (r *Reader) Headers() []string {
 	}
 	return out
 }
+

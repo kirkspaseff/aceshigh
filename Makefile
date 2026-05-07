@@ -36,6 +36,10 @@ migrate-up: ## Apply all pending migrations
 migrate-down: ## Roll back the most recent migration
 	goose -dir migrations postgres "$(GOOSE_DB_URL)" down
 
+.PHONY: migrate-status
+migrate-status: ## Show which migrations have been applied
+	goose -dir migrations postgres "$(GOOSE_DB_URL)" status
+
 psql: ## Open a psql shell against the running database
 	docker compose exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
@@ -51,6 +55,23 @@ extract-aircraft: ## Export aircraft from MDB to data/aircraft.csv
 	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) aircraft > data/aircraft.csv
 	@echo "Wrote data/aircraft.csv"
 
+.PHONY: extract-narratives
+extract-narratives: ## Export narratives from MDB to data/narratives.csv
+	@mkdir -p data
+	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) narratives > data/narratives.csv
+	@echo "Wrote data/narratives.csv"
+ 
+.PHONY: extract-findings
+extract-findings: ## Export findings from MDB to data/findings.csv
+	@mkdir -p data
+	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) Findings > data/findings.csv
+	@echo "Wrote data/findings.csv"
+ 
+.PHONY: extract-events-sequence
+extract-events-sequence: ## Export Events_Sequence from MDB to data/events_sequence.csv
+	@mkdir -p data
+	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) Events_Sequence > data/events_sequence.csv
+	@echo "Wrote data/events_sequence.csv"
 .PHONY: build-loader
 build-loader: ## Compile the loader binary
 	@mkdir -p bin
@@ -64,5 +85,18 @@ load-events: build-loader
 load-aircraft: build-loader 
 	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --table aircraft --source data/aircraft.csv
 
+.PHONY: load-narratives
+load-narratives: build-loader ## Load narratives.csv (aircraft must be loaded first)
+	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --table narratives --source data/narratives.csv
+ 
+.PHONY: load-findings
+load-findings: build-loader ## Load findings.csv (aircraft must be loaded first)
+	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --table findings --source data/findings.csv
+ 
+.PHONY: load-events-sequence
+load-events-sequence: build-loader ## Load events_sequence.csv (aircraft must be loaded first)
+	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --table events_sequence --source data/events_sequence.csv
+ 
 .PHONY: load-all
-load-all: load-events load-aircraft
+load-all: load-events load-aircraft load-narratives load-findings load-events-sequence ## Load all tables in dependency order
+
