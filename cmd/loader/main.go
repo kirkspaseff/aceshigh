@@ -1,4 +1,4 @@
-// / Command loader ingests CSV files exported from the NTSB MDB into Postgres.
+// Command loader ingests CSV files exported from the NTSB MDB into Postgres.
 //
 // Usage:
 //
@@ -48,6 +48,9 @@ var tables = map[string]tableLoader{
 	"narratives":      loadNarratives,
 	"findings":        loadFindings,
 	"events_sequence": loadEventsSequence,
+	"countries":       loadCountries,
+	"us_states":       loadUSStates,
+	"code_lookups":    loadCodeLookups,
 }
 
 func main() {
@@ -303,3 +306,106 @@ func loadEventsSequence(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s 
 	log.Printf("loader: loaded events_sequence in %s", time.Since(loadStart))
 	return nil
 }
+
+func loadCountries(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.Counter) error {
+	reader, err := acsv.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("open csv: %w", err)
+	}
+
+	parseStart := time.Now()
+	var rows []*domain.Country
+	for {
+		err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			s.Inc("countries.read_errors")
+			return fmt.Errorf("read row: %w", err)
+		}
+		c, err := transform.Country(reader, s)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, c)
+		s.Inc("countries.parsed")
+	}
+	log.Printf("loader: parsed %d countries in %s", len(rows), time.Since(parseStart))
+
+	loadStart := time.Now()
+	if err := load.Countries(ctx, pool, rows, s); err != nil {
+		return fmt.Errorf("load countries: %w", err)
+	}
+	log.Printf("loader: loaded countries in %s", time.Since(loadStart))
+	return nil
+}
+
+func loadUSStates(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.Counter) error {
+	reader, err := acsv.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("open csv: %w", err)
+	}
+
+	parseStart := time.Now()
+	var rows []*domain.USState
+	for {
+		err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			s.Inc("us_states.read_errors")
+			return fmt.Errorf("read row: %w", err)
+		}
+		st, err := transform.USState(reader, s)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, st)
+		s.Inc("us_states.parsed")
+	}
+	log.Printf("loader: parsed %d us_states in %s", len(rows), time.Since(parseStart))
+
+	loadStart := time.Now()
+	if err := load.USStates(ctx, pool, rows, s); err != nil {
+		return fmt.Errorf("load us_states: %w", err)
+	}
+	log.Printf("loader: loaded us_states in %s", time.Since(loadStart))
+	return nil
+}
+
+func loadCodeLookups(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.Counter) error {
+	reader, err := acsv.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("open csv: %w", err)
+	}
+
+	parseStart := time.Now()
+	var rows []*domain.CodeLookup
+	for {
+		err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			s.Inc("code_lookups.read_errors")
+			return fmt.Errorf("read row: %w", err)
+		}
+		l, err := transform.CodeLookup(reader, s)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, l)
+		s.Inc("code_lookups.parsed")
+	}
+	log.Printf("loader: parsed %d code_lookups in %s", len(rows), time.Since(parseStart))
+
+	loadStart := time.Now()
+	if err := load.CodeLookups(ctx, pool, rows, s); err != nil {
+		return fmt.Errorf("load code_lookups: %w", err)
+	}
+	log.Printf("loader: loaded code_lookups in %s", time.Since(loadStart))
+	return nil
+}
+
