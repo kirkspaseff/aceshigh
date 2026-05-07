@@ -45,11 +45,24 @@ extract-events: ## Export events from MDB to data/events.csv (override MDB=path/
 	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) events > data/events.csv
 	@echo "Wrote data/events.csv"
  
+.PHONY: extract-aircraft
+extract-aircraft: ## Export aircraft from MDB to data/aircraft.csv
+	@mkdir -p data
+	mdb-export -q '"' -T '%Y-%m-%d %H:%M:%S' $(MDB) aircraft > data/aircraft.csv
+	@echo "Wrote data/aircraft.csv"
+
 .PHONY: build-loader
 build-loader: ## Compile the loader binary
 	@mkdir -p bin
 	go build -o bin/loader ./cmd/loader
  
 .PHONY: load-events
-load-events: build-loader ## Run the loader against data/events.csv
+load-events: build-loader 
 	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --source data/events.csv
+
+.PHONY: load-aircraft
+load-aircraft: build-loader 
+	DATABASE_URL="$(GOOSE_DB_URL)" ./bin/loader --table aircraft --source data/aircraft.csv
+
+.PHONY: load-all
+load-all: load-events load-aircraft
