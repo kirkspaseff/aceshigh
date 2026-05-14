@@ -184,4 +184,3 @@ func Events(ctx context.Context, pool *pgxpool.Pool, events []*domain.Event, s *
 	}
 	return nil
 }
-

@@ -56,8 +56,9 @@ var tables = map[string]tableLoader{
 func main() {
 	var (
 		table      = flag.String("table", "", "table to load (required); one of: "+tableNames())
-		sourcePath = flag.String("source", "", "path to CSV file (required)")
+		sourcePath = flag.String("source", "./avall.mdb", "path to CSV file (required)")
 	)
+
 	flag.Parse()
 
 	if *table == "" {
@@ -65,6 +66,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
+
 	if *sourcePath == "" {
 		fmt.Fprintln(os.Stderr, "error: --source is required")
 		flag.Usage()
@@ -81,6 +83,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	log.Printf("config read: %v", cfg)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -105,7 +108,7 @@ func run(ctx context.Context, cfg *config.Config, table, sourcePath string, load
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		return fmt.Errorf("connect db: %w", err)
+		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 	defer pool.Close()
 	log.Printf("loader: connected to database")
@@ -118,7 +121,6 @@ func run(ctx context.Context, cfg *config.Config, table, sourcePath string, load
 
 	counter := stats.New()
 	if err := loader(ctx, pool, f, counter); err != nil {
-		// Print stats even on partial failure — they help debug.
 		fmt.Println("\nstats (run failed):")
 		counter.WriteReport(os.Stdout)
 		return err
@@ -130,13 +132,10 @@ func run(ctx context.Context, cfg *config.Config, table, sourcePath string, load
 	return nil
 }
 
-// ---------- Per-table loaders ----------
-//
 // These follow the same shape: stream CSV → transform → bulk-load.
 // The pattern is duplicated rather than abstracted because each table
 // has a different domain type and the type-specific code makes the
 // shape clearer.
-
 func loadEvents(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.Counter) error {
 	reader, err := acsv.NewReader(r)
 	if err != nil {
@@ -147,10 +146,10 @@ func loadEvents(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.C
 	var rows []*domain.Event
 	for {
 		err := reader.Read()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			s.Inc("events.read_errors")
 			return fmt.Errorf("read row: %w", err)
 		}
@@ -168,6 +167,7 @@ func loadEvents(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *stats.C
 		return fmt.Errorf("load events: %w", err)
 	}
 	log.Printf("loader: loaded events in %s", time.Since(loadStart))
+
 	return nil
 }
 
@@ -408,4 +408,3 @@ func loadCodeLookups(ctx context.Context, pool *pgxpool.Pool, r io.Reader, s *st
 	log.Printf("loader: loaded code_lookups in %s", time.Since(loadStart))
 	return nil
 }
-
